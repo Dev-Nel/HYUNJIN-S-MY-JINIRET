@@ -1,14 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Eye, Camera, Zap } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Eye, Camera, Zap, Volume2, VolumeX } from "lucide-react"
 import { SceneDisplay } from "./scene-display"
 import { CameraCapture } from "./camera-capture"
 import { ScoreDisplay } from "./score-display"
 import { SpyLog } from "./spy-log"
 import { UnlockNotification } from "./unlock-notification"
+import { AgentCamera } from "./agent-camera"
+import { CompletionScreen } from "./completion-screen"
+import { QuitWarning } from "./quit-warning"
 
 export type SpyLogEntry = {
   id: string
@@ -19,6 +23,8 @@ export type SpyLogEntry = {
   detectedObjects: string[]
 }
 
+const MAX_MISSIONS = 5
+
 export function GameInterface() {
   const [totalScore, setTotalScore] = useState(0)
   const [currentScene, setCurrentScene] = useState<string | null>(null)
@@ -27,8 +33,62 @@ export function GameInterface() {
   const [unlockedScenes, setUnlockedScenes] = useState(10)
   const [showUnlock, setShowUnlock] = useState(false)
   const [newUnlockedCount, setNewUnlockedCount] = useState(0)
+  const [showAgentCamera, setShowAgentCamera] = useState(false)
+  const [agentPhoto, setAgentPhoto] = useState<string | null>(null)
+  const [showCompletion, setShowCompletion] = useState(false)
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false)
+  const [showQuitWarning, setShowQuitWarning] = useState(false)
+  const [hasStarted, setHasStarted] = useState(false)
+
+  const completionAudioRef = useRef<HTMLAudioElement>(null)
+  const bgmAudioRef = useRef<HTMLAudioElement>(null)
+  const emotionalDamageRef = useRef<HTMLAudioElement>(null)
+
+  const isBoardFull = spyLog.length >= MAX_MISSIONS
+
+  useEffect(() => {
+    if (hasStarted && bgmAudioRef.current && !isBoardFull && !showCompletion) {
+      bgmAudioRef.current.volume = 0.3
+      bgmAudioRef.current.loop = true
+      bgmAudioRef.current.play().catch((err) => console.log("[v0] BGM autoplay blocked:", err))
+      setIsMusicPlaying(true)
+    }
+  }, [hasStarted, isBoardFull, showCompletion])
+
+  useEffect(() => {
+    if (showCompletion && bgmAudioRef.current) {
+      bgmAudioRef.current.pause()
+      setIsMusicPlaying(false)
+    }
+  }, [showCompletion])
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasStarted && spyLog.length > 0 && spyLog.length < MAX_MISSIONS) {
+        e.preventDefault()
+        e.returnValue = ""
+        setShowQuitWarning(true)
+        return ""
+      }
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+  }, [hasStarted, spyLog.length])
+
+  const toggleMusic = () => {
+    if (bgmAudioRef.current) {
+      if (isMusicPlaying) {
+        bgmAudioRef.current.pause()
+      } else {
+        bgmAudioRef.current.play().catch((err) => console.log("[v0] BGM play error:", err))
+      }
+      setIsMusicPlaying(!isMusicPlaying)
+    }
+  }
 
   const handleSceneGenerated = (scene: string) => {
+    if (!hasStarted) setHasStarted(true)
     setCurrentScene(scene)
     setShowCamera(true)
   }
@@ -57,9 +117,59 @@ export function GameInterface() {
     }
   }
 
+  const handleAgentPhotoCapture = (imageUrl: string) => {
+    setAgentPhoto(imageUrl)
+    setShowAgentCamera(false)
+    setShowCompletion(true)
+
+    // Stop BGM and play completion song
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.pause()
+    }
+    if (completionAudioRef.current) {
+      completionAudioRef.current.play().catch((err) => {
+        console.log("[v0] Completion audio playback failed:", err)
+      })
+    }
+  }
+
+  const handleQuit = () => {
+    // Play emotional damage sound
+    if (emotionalDamageRef.current) {
+      emotionalDamageRef.current.play().catch((err) => console.log("[v0] Emotional damage audio error:", err))
+    }
+    setShowQuitWarning(false)
+  }
+
+  const handleContinue = () => {
+    setShowQuitWarning(false)
+  }
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
+      {/* Audio elements */}
+      <audio ref={completionAudioRef} src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/happy-happy-happy-song-93vWyyTNEflvtF078jQ0YJ3xHi9T1Q.mp3" preload="auto" />
+      <audio ref={bgmAudioRef} src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/CORTIS%20-%20FaSHioN-VzgnWZ60pVhL7SsaAjwQwhDJByA5HF.mp3" preload="auto" />
+      <audio ref={emotionalDamageRef} src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/emotional-damage-meme-cbhmoPvqkQRkF7l82TdCvsChf7Lcid.mp3" preload="auto" />
+
       {showUnlock && <UnlockNotification count={newUnlockedCount} />}
+
+      {showQuitWarning && (
+        <QuitWarning missionsCompleted={spyLog.length} onQuit={handleQuit} onContinue={handleContinue} />
+      )}
+
+      {showCompletion && agentPhoto && (
+        <CompletionScreen
+          agentPhoto={agentPhoto}
+          totalScore={totalScore}
+          missionsCompleted={spyLog.length}
+          onClose={() => setShowCompletion(false)}
+        />
+      )}
+
+      {showAgentCamera && (
+        <AgentCamera onCapture={handleAgentPhotoCapture} onCancel={() => setShowAgentCamera(false)} />
+      )}
 
       {/* Header */}
       <header className="mb-8">
@@ -74,7 +184,23 @@ export function GameInterface() {
                 <p className="text-xs md:text-sm text-muted-foreground font-mono">{">"} SPY MISSION ACTIVE</p>
               </div>
             </div>
-            <ScoreDisplay score={totalScore} unlockedScenes={unlockedScenes} />
+            <div className="flex items-center gap-4">
+              {hasStarted && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={toggleMusic}
+                  className="border-primary/50 bg-transparent"
+                >
+                  {isMusicPlaying ? (
+                    <Volume2 className="size-4 text-primary" />
+                  ) : (
+                    <VolumeX className="size-4 text-muted-foreground" />
+                  )}
+                </Button>
+              )}
+              <ScoreDisplay score={totalScore} unlockedScenes={unlockedScenes} />
+            </div>
           </div>
         </div>
       </header>
@@ -92,11 +218,20 @@ export function GameInterface() {
                 </h2>
                 <Badge variant="outline" className="font-mono text-xs border-primary text-primary">
                   <Zap className="size-3 mr-1" />
-                  {unlockedScenes}/82 SCENES
+                  {spyLog.length}/{MAX_MISSIONS} MISSIONS
                 </Badge>
               </div>
 
-              <SceneDisplay onSceneGenerated={handleSceneGenerated} unlockedScenes={unlockedScenes} />
+              {!isBoardFull ? (
+                <SceneDisplay onSceneGenerated={handleSceneGenerated} unlockedScenes={unlockedScenes} />
+              ) : (
+                <div className="text-center py-8 bg-secondary/50 rounded-lg border-2 border-dashed border-primary/30">
+                  <p className="text-lg font-mono text-primary mb-2">ALL MISSIONS COMPLETE!</p>
+                  <p className="text-sm text-muted-foreground">
+                    {agentPhoto ? "Your agent identity has been confirmed." : "Take your agent photo to finish."}
+                  </p>
+                </div>
+              )}
 
               {showCamera && currentScene && (
                 <CameraCapture
@@ -111,7 +246,12 @@ export function GameInterface() {
 
         {/* Right Column - Spy Log */}
         <div className="lg:col-span-1">
-          <SpyLog entries={spyLog} />
+          <SpyLog
+            entries={spyLog}
+            onBoardFull={() => setShowAgentCamera(true)}
+            isBoardFull={isBoardFull}
+            agentPhoto={agentPhoto}
+          />
         </div>
       </div>
     </div>
