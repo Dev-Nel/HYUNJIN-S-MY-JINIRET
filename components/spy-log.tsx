@@ -12,6 +12,7 @@ type SpyLogProps = {
   onBoardFull?: () => void
   isBoardFull?: boolean
   agentPhoto?: string | null
+  boardNumber?: number
 }
 
 const getPinboardStyle = (index: number) => {
@@ -43,7 +44,7 @@ const getConnectionPoints = () => {
   ]
 }
 
-export function SpyLog({ entries, onBoardFull, isBoardFull, agentPhoto }: SpyLogProps) {
+export function SpyLog({ entries, onBoardFull, isBoardFull, agentPhoto, boardNumber = 1 }: SpyLogProps) {
   const connectionPoints = getConnectionPoints()
   const displayEntries = entries.slice(0, MAX_BOARD_ENTRIES)
 
@@ -52,10 +53,10 @@ export function SpyLog({ entries, onBoardFull, isBoardFull, agentPhoto }: SpyLog
       <div className="p-4 border-b border-primary/20 bg-secondary">
         <h2 className="font-mono font-bold text-sm text-card-foreground flex items-center gap-2">
           <FileText className="size-4 text-primary" />
-          SPY LOG
+          SPY LOG {boardNumber > 1 && `- BOARD ${boardNumber}`}
         </h2>
         <p className="text-xs text-muted-foreground font-mono mt-1">
-          {displayEntries.length}/{MAX_BOARD_ENTRIES} MISSIONS COMPLETED
+          {displayEntries.length}/{MAX_BOARD_ENTRIES} MISSIONS ON BOARD
         </p>
       </div>
 
